@@ -14,6 +14,11 @@ public class TestService {
         System.out.println("BT-----------------------------------");
     }
 
+//    @BeforeTest
+//    public void beforeTest1() {
+//        System.out.println("BT11111111-----------------------------------");
+//    }
+
     @AfterTest
     public void afterTest() {
         System.out.println("AT-----------------------------------\n");

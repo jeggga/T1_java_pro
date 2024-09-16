@@ -8,11 +8,17 @@ import org.example.annotation.CsvSource;
 import org.example.annotation.Test;
 import org.example.exception.AnnotationAfterSuiteException;
 import org.example.exception.AnnotationBeforeSuiteException;
+import org.example.exception.AnnotationBeforeTestException;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -20,120 +26,125 @@ public class TestRunner {
     public static void runTests(TestService testService) {
         Class<? extends TestService> aClass = testService.getClass();
 
-        Method[] methods = aClass.getMethods();
+        Method[] methods = aClass.getDeclaredMethods();
+
+        Map<String, List<Method>> interfaceMethodsMap = getInterfaceMethodsMap(methods);
 
 
-        checkBeforeSuitAnnotation(methods);
-        checkAfterSuitAnnotation(methods);
+        executeStaticMethod(BeforeSuite.class.getSimpleName(), interfaceMethodsMap, testService);
+        executeStaticMethod(AfterSuite.class.getSimpleName(), interfaceMethodsMap, testService);
 
-        executeStaticMethod(methods, testService);
+        executeTests(interfaceMethodsMap, testService);
 
-        executeTests(methods, testService);
-
-        executeMethodWithParam(methods, testService);
+        executeMethodWithParam(interfaceMethodsMap, testService);
     }
 
-    private static void checkBeforeSuitAnnotation(Method[] methods) {
-        int count = 0;
+    private static Map<String, List<Method>> getInterfaceMethodsMap(Method[] methods) {
+        Map<String, List<Method>> interfaceMethodsMap = new HashMap<>();
         for (Method method : methods) {
-            if (count > 1) {
-                throw new AnnotationBeforeSuiteException(String.format("Methods with annotation %s more than 1", BeforeSuite.class.getSimpleName()));
-            }
             if (method.getAnnotation(BeforeSuite.class) != null) {
-                if (!Modifier.isStatic(method.getModifiers())) {
-                    throw new AnnotationBeforeSuiteException("Methods should be static");
-                }
-                count++;
+                addToMap(interfaceMethodsMap, BeforeSuite.class.getSimpleName(), method);
+            } else if (method.getAnnotation(AfterSuite.class) != null) {
+                addToMap(interfaceMethodsMap, AfterSuite.class.getSimpleName(), method);
+            } else if (method.getAnnotation(BeforeTest.class) != null) {
+                addToMap(interfaceMethodsMap, BeforeTest.class.getSimpleName(), method);
+            } else if (method.getAnnotation(AfterTest.class) != null) {
+                addToMap(interfaceMethodsMap, AfterTest.class.getSimpleName(), method);
+            } else if (method.getAnnotation(Test.class) != null) {
+                addToMap(interfaceMethodsMap, Test.class.getSimpleName(), method);
+            } else if (method.getAnnotation(CsvSource.class) != null) {
+                addToMap(interfaceMethodsMap, CsvSource.class.getSimpleName(), method);
             }
+        }
+        return interfaceMethodsMap;
+    }
+
+    private static void addToMap(Map<String, List<Method>> interfaceMethodsMap, String key, Method value) {
+        if (interfaceMethodsMap.get(key) != null) {
+            interfaceMethodsMap.get(key).add(value);
+        } else {
+            interfaceMethodsMap.put(key, new ArrayList<>(List.of(value)));
         }
     }
 
-    private static void checkAfterSuitAnnotation(Method[] methods) {
-        int count = 0;
-        for (Method method : methods) {
-            if (count > 1) {
-                throw new AnnotationAfterSuiteException(String.format("Methods with annotation %s more than 1", AfterSuite.class.getSimpleName()));
+    private static void executeStaticMethod(String simpleNameInterface,
+                                            Map<String, List<Method>> interfaceMethodsMap,
+                                            TestService testService) {
+        List<Method> methods = interfaceMethodsMap.get(simpleNameInterface);
+        if (Objects.nonNull(methods) && !methods.isEmpty()) {
+            if (methods.size() > 1) {
+                throw new AnnotationAfterSuiteException(String.format("Methods with annotation %s more than 1", simpleNameInterface));
             }
-            if (method.getAnnotation(AfterSuite.class) != null) {
+
+            try {
+                Method method = methods.get(0);
                 if (!Modifier.isStatic(method.getModifiers())) {
                     throw new AnnotationAfterSuiteException("Methods should be static");
                 }
-                count++;
+                method.invoke(testService);
+            } catch (InvocationTargetException | IllegalAccessException e) {
+                throw new RuntimeException(e);
             }
         }
     }
 
-    private static void executeStaticMethod(Method[] methods, TestService testService) {
-        for (Method method : methods) {
-            if (method.getAnnotation(BeforeSuite.class) != null || method.getAnnotation(AfterSuite.class) != null) {
-                try {
-                    method.invoke(testService);
-                } catch (Exception ex) {
-                    throw new RuntimeException(ex);
-                }
-            }
-        }
-    }
+    private static void executeTests(Map<String, List<Method>> interfaceMethodsMap,
+                                     TestService testService) {
+        List<Supplier<Integer>> beforeTestSuppliers = getSupplierForTest(BeforeTest.class.getSimpleName(), interfaceMethodsMap, testService);
 
-    private static void executeTests(Method[] methods, TestService testService) {
-        Supplier<Integer> beforeTestSupplier = null;
-        Supplier<Integer> afterTestSupplier = null;
 
-        for (Method method : methods) {
-            if (method.getAnnotation(BeforeTest.class) != null) {
-                beforeTestSupplier = () -> {
-                   try{
-                       method.invoke(testService);
-                       return 0;
-                   } catch (Exception ex) {
-                       throw new RuntimeException(ex);
-                   }
-                };
-            } else if (method.getAnnotation(AfterTest.class) != null) {
-                afterTestSupplier = () -> {
-                    try{
-                        method.invoke(testService);
-                        return 0;
-                    } catch (Exception ex) {
-                        throw new RuntimeException(ex);
-                    }
-                };
-            }
-        }
+        List<Supplier<Integer>> afterTestSuppliers = getSupplierForTest(AfterTest.class.getSimpleName(), interfaceMethodsMap, testService);
 
-        Supplier<Integer> finalBeforeTestSupplier = beforeTestSupplier;
-        Supplier<Integer> finalAfterTestSupplier = afterTestSupplier;
-        Arrays.stream(methods)
-                .filter(method -> method.getAnnotation(Test.class) != null)
+        interfaceMethodsMap.get(Test.class.getSimpleName()).stream()
                 .sorted(Comparator.comparingInt(o -> o.getAnnotation(Test.class).priority()))
                 .forEach(method -> {
                     try {
-                        if (Objects.nonNull(finalBeforeTestSupplier)) {
-                            finalBeforeTestSupplier.get();
+                        for (Supplier<Integer> supplier: beforeTestSuppliers) {
+                            supplier.get();
                         }
                         method.invoke(testService);
-                        if (Objects.nonNull(finalAfterTestSupplier)) {
-                            finalAfterTestSupplier.get();
+                        for (Supplier<Integer> supplier: afterTestSuppliers) {
+                            supplier.get();
                         }
                     } catch (Exception ex) {
                         throw new RuntimeException(ex);
                     }
                 });
+
     }
 
-    public static void executeMethodWithParam(Method[] methods, TestService testService) {
-        for (Method method : methods) {
-            if (method.getAnnotation(CsvSource.class) != null) {
-                String[] strArr = method.getAnnotation(CsvSource.class).str().replace(" ", "").split(",");
-                try {
-                    int a = Integer.parseInt(strArr[0]);
-                    String b = strArr[1];
-                    int c = Integer.parseInt(strArr[2]);
-                    boolean d = Boolean.parseBoolean(strArr[3]);
-                    method.invoke(testService, a, b, c, d);
-                } catch (Exception ex) {
-                    throw new RuntimeException(ex);
-                }
+    private static List<Supplier<Integer>> getSupplierForTest(String simpleNameInterface,
+                                                        Map<String, List<Method>> interfaceMethodsMap,
+                                                        TestService testService) {
+        List<Supplier<Integer>> testSupplier = new ArrayList<>();
+        List<Method> methodsBeforeTest = interfaceMethodsMap.get(simpleNameInterface);
+        if (Objects.nonNull(methodsBeforeTest)) {
+            for (Method method : methodsBeforeTest) {
+                testSupplier.add(() -> {
+                    try {
+                        method.invoke(testService);
+                    } catch (InvocationTargetException | IllegalAccessException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return 0;
+                });
+            }
+        }
+        return testSupplier;
+    }
+
+    public static void executeMethodWithParam(Map<String, List<Method>> interfaceMethodsMap,
+                                              TestService testService) {
+        for (Method method : interfaceMethodsMap.get(CsvSource.class.getSimpleName())) {
+            String[] strArr = method.getAnnotation(CsvSource.class).str().replace(" ", "").split(",");
+            try {
+                int a = Integer.parseInt(strArr[0]);
+                String b = strArr[1];
+                int c = Integer.parseInt(strArr[2]);
+                boolean d = Boolean.parseBoolean(strArr[3]);
+                method.invoke(testService, a, b, c, d);
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
             }
         }
     }
