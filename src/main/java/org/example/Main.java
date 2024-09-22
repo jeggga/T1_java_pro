@@ -1,8 +1,8 @@
 package org.example;
 
 
-import org.example.service.TestRunner;
-import org.example.service.TestService;
+import org.example.practice_1.service.TestRunner;
+import org.example.practice_1.service.TestService;
 
 import java.lang.reflect.InvocationTargetException;
 

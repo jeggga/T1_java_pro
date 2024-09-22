@@ -1,11 +1,11 @@
-package org.example.service;
+package org.example.practice_1.service;
 
-import org.example.annotation.AfterSuite;
-import org.example.annotation.AfterTest;
-import org.example.annotation.BeforeSuite;
-import org.example.annotation.BeforeTest;
-import org.example.annotation.CsvSource;
-import org.example.annotation.Test;
+import org.example.practice_1.annotation.AfterSuite;
+import org.example.practice_1.annotation.AfterTest;
+import org.example.practice_1.annotation.BeforeSuite;
+import org.example.practice_1.annotation.BeforeTest;
+import org.example.practice_1.annotation.CsvSource;
+import org.example.practice_1.annotation.Test;
 
 public class TestService {
 
