@@ -3,18 +3,18 @@ package org.example.practice_2;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.OptionalDouble;
-import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class StreamApi {
-    public Set<Integer> deleteDuplicate(List<Integer> list) {
-        return new LinkedHashSet<>(list);
+    public List<Integer> deleteDuplicate(List<Integer> list) {
+        return list.stream()
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     public Integer deleteThirdMaxValue(List<Integer> list) {
@@ -22,7 +22,8 @@ public class StreamApi {
                 .sorted((o1, o2) -> o2 - o1)
                 .skip(2)
                 .limit(1)
-                .findAny().get();
+                .findFirst()
+                .orElseThrow();
     }
 
     public Integer deleteWithoutDuplicatesThirdMaxValue(List<Integer> list) {
@@ -31,7 +32,7 @@ public class StreamApi {
                 .sorted((o1, o2) -> o2 - o1)
                 .skip(2)
                 .limit(1)
-                .findAny().get();
+                .findFirst().orElseThrow();
     }
 
     public List<String> nameListElderlyEmployee(List<Employee> employeeList) {
@@ -43,12 +44,11 @@ public class StreamApi {
                 .collect(Collectors.toList());
     }
 
-    public OptionalDouble averageAgeEmployees(List<Employee> employeeList) {
+    public Double averageAgeEmployees(List<Employee> employeeList) {
         return employeeList.stream()
                 .filter(employee -> Objects.equals(employee.getPost(), "Инженер"))
                 .map(Employee::getAge)
-                .mapToInt(value -> value)
-                .average();
+                .collect(Collectors.averagingInt(value -> value));
     }
 
     public Optional<String> largerString(List<String> stringList) {
@@ -56,21 +56,21 @@ public class StreamApi {
                 .max(Comparator.comparingInt(String::length));
     }
 
-    public Map<String, Integer> mapStringCount(String str) {
+    public Map<String, Long> mapStringCount(String str) {
         return Arrays.stream(str.split(" "))
-                .collect(Collectors.toMap(String::toString, s -> 1, Integer::sum));
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
     }
 
     public List<String> getStringInOrderedLines(List<String> stringList) {
         return stringList.stream()
-                .sorted((o1, o2) -> (o1.length() == o2.length()) ? o1.compareTo(o2) : o1.length() - o2.length())
+                .sorted(Comparator.comparing(String::length).thenComparing(Comparator.naturalOrder()))
                 .collect(Collectors.toList());
     }
 
-    public Optional<String> getVeryLargeStringInList(List<String> stringList) {
+    public String getVeryLargeStringInList(List<String> stringList) {
         return stringList.stream()
                 .map(s -> Arrays.asList(s.split(" ")))
                 .flatMap(Collection::stream)
-                .max(Comparator.comparingInt(String::length));
+                .max(Comparator.comparingInt(String::length)).orElseThrow();
     }
 }
